@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { LoginScreen, SignupScreen } from '../screens/LoginScreen';
 
 // Import screens
 import DashboardScreen from '../screens/DashboardScreen';
@@ -25,35 +27,47 @@ import ExpensesScreen from '../screens/ExpensesScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
+const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const QuickAddModal = ({ isVisible, onClose }) => {
-  const [activeTab, setActiveTab] = React.useState('Expense');
-  const [amount, setAmount] = React.useState('');
-  const [description, setDescription] = React.useState('');
-  const [category, setCategory] = React.useState(null);
-  const [open, setOpen] = React.useState(false);
-  const [categories, setCategories] = React.useState([
+const QuickAddModal = ({ isVisible, onClose, categories }) => {
+  const [activeTab, setActiveTab] = useState('Expense');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [localCategories, setLocalCategories] = useState([
     { label: 'Food', value: 'food' },
     { label: 'Transport', value: 'transport' },
     { label: 'Entertainment', value: 'entertainment' },
     { label: 'Shopping', value: 'shopping' }
   ]);
+  const [category, setCategory] = useState(null); // Add this line
   
   // Task states
-  const [taskDescription, setTaskDescription] = React.useState('');
-  const [parentTask, setParentTask] = React.useState('');
-  const [deadline, setDeadline] = React.useState(new Date());
-  const [showDatePicker, setShowDatePicker] = React.useState(false);
-  const [hasDeadline, setHasDeadline] = React.useState(false);
+  const [taskDescription, setTaskDescription] = useState('');
+  const [parentTask, setParentTask] = useState('');
+  const [deadline, setDeadline] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [hasDeadline, setHasDeadline] = useState(false);
 
   // Skill states
-  const [skillDescription, setSkillDescription] = React.useState('');
-  const [isStreak, setIsStreak] = React.useState(false);
-  const [goalHours, setGoalHours] = React.useState('');
-  const [skillDeadline, setSkillDeadline] = React.useState(new Date());
-  const [showSkillDatePicker, setShowSkillDatePicker] = React.useState(false);
-  const [hasSkillDeadline, setHasSkillDeadline] = React.useState(false);
+  const [skillDescription, setSkillDescription] = useState('');
+  const [isStreak, setIsStreak] = useState(false);
+  const [goalHours, setGoalHours] = useState('');
+  const [skillDeadline, setSkillDeadline] = useState(new Date());
+  const [showSkillDatePicker, setShowSkillDatePicker] = useState(false);
+  const [hasSkillDeadline, setHasSkillDeadline] = useState(false);
+
+  // New state for Event
+  const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState(new Date());
+  const [eventTime, setEventTime] = useState(new Date());
+  const [eventDetails, setEventDetails] = useState('');
+  const [eventColor, setEventColor] = useState('#1E3A8A');
+  const [selectedSkill, setSelectedSkill] = useState(null);
+  const [showEventDatePicker, setShowEventDatePicker] = useState(false);
+  const [showEventTimePicker, setShowEventTimePicker] = useState(false);
 
   const resetForm = () => {
     setAmount('');
@@ -68,6 +82,12 @@ const QuickAddModal = ({ isVisible, onClose }) => {
     setGoalHours('');
     setSkillDeadline(new Date());
     setHasSkillDeadline(false);
+    setEventName('');
+    setEventDate(new Date());
+    setEventTime(new Date());
+    setEventDetails('');
+    setEventColor('#1E3A8A');
+    setSelectedSkill(null);
   };
 
   const handleSubmit = (type) => {
@@ -96,6 +116,13 @@ const QuickAddModal = ({ isVisible, onClose }) => {
         }
         message = 'Skill added successfully!';
         break;
+      case 'Event':
+        if (!eventName || !eventDate || !eventTime) {
+          Alert.alert('Error', 'Event name, date and time are required');
+          isValid = false;
+        }
+        message = 'Event added successfully!';
+        break;
     }
 
     if (isValid) {
@@ -118,7 +145,7 @@ const QuickAddModal = ({ isVisible, onClose }) => {
           <View style={styles.formContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Amount"
+              placeholder="Amount *"
               value={amount}
               onChangeText={text => setAmount(text.replace(/[^0-9]/g, ''))}
               keyboardType="numeric"
@@ -126,23 +153,25 @@ const QuickAddModal = ({ isVisible, onClose }) => {
             />
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Description"
+              placeholder="Description *"
               value={description}
               onChangeText={setDescription}
               multiline
-              maxLength={100}
               placeholderTextColor="#9CA3AF"
             />
             <DropDownPicker
               open={open}
               value={category}
-              items={categories}
+              items={categories?.map(cat => ({
+                label: cat.name,
+                value: cat.name,
+                icon: () => <Ionicons name={cat.icon} size={20} color={cat.color} />
+              })) || []}
               setOpen={setOpen}
               setValue={setCategory}
-              setItems={setCategories}
+              placeholder="Select Category *"
               style={styles.dropdown}
               dropDownContainerStyle={styles.dropdownContainer}
-              placeholder="Select Category"
             />
             <TouchableOpacity 
               style={styles.submitButton} 
@@ -179,14 +208,20 @@ const QuickAddModal = ({ isVisible, onClose }) => {
               />
             </View>
             {hasDeadline && (
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.dateButtonText}>
-                  {deadline.toLocaleDateString()}
-                </Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text>{deadline.toLocaleDateString()}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text>{deadline.toLocaleTimeString()}</Text>
+                </TouchableOpacity>
+              </>
             )}
             {showDatePicker && (
               <DateTimePicker
@@ -271,6 +306,43 @@ const QuickAddModal = ({ isVisible, onClose }) => {
             </TouchableOpacity>
           </View>
         );
+      case 'Event':
+        return (
+          <View style={styles.formContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Event Name *"
+              value={eventName}
+              onChangeText={setEventName}
+              placeholderTextColor="#9CA3AF"
+            />
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowEventDatePicker(true)}
+            >
+              <Text>Date: {eventDate.toLocaleDateString()} *</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowEventTimePicker(true)}
+            >
+              <Text>Time: {eventTime.toLocaleTimeString()} *</Text>
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Event Details"
+              value={eventDetails}
+              onChangeText={setEventDetails}
+              multiline
+              placeholderTextColor="#9CA3AF"
+            />
+            <DropDownPicker
+              placeholder="Related Skill (Optional)"
+              // ...skill picker props...
+            />
+            {/* Color picker component */}
+          </View>
+        );
       default:
         return null;
     }
@@ -289,7 +361,7 @@ const QuickAddModal = ({ isVisible, onClose }) => {
       >
         <View style={styles.centeredModalContent}>
           <View style={styles.tabsContainer}>
-            {['Expense', 'Task', 'Skill'].map((tab) => (
+            {['Expense', 'Task', 'Skill', 'Event'].map((tab) => (
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
@@ -331,13 +403,14 @@ const QuickActionFAB = ({ onPress }) => (
   </TouchableOpacity>
 );
 
-const AppNavigator = () => {
+const MainNavigator = () => {
   const insets = useSafeAreaInsets();
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [activeScreen, setActiveScreen] = React.useState('Dashboard');
+  const [categories, setCategories] = useState([/* your categories */]);
 
   return (
-    <NavigationContainer>
+    <>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           tabBarStyle: {
@@ -363,6 +436,7 @@ const AppNavigator = () => {
             else if (route.name === 'Settings') iconName = 'settings-outline';
             return <Ionicons name={iconName} size={size} color={color} />;
           },
+          swipeEnabled: true, // Enable swipe navigation
         })}
         screenListeners={{
           state: (e) => {
@@ -383,7 +457,20 @@ const AppNavigator = () => {
       <QuickAddModal 
         isVisible={isModalVisible}
         onClose={() => setIsModalVisible(false)}
+        categories={categories}
       />
+    </>
+  );
+};
+
+const AppNavigator = () => {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="Main" component={MainNavigator} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 };
@@ -527,6 +614,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  required: {
+    color: 'red',
+    marginLeft: 4,
   }
 });
 

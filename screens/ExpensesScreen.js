@@ -9,7 +9,12 @@ import {
   TextInput,
   Image,
   RefreshControl,
+  Platform,
+  KeyboardAvoidingView,
   Alert,
+  FlatList,
+  Switch,
+  Animated,
 } from 'react-native';
 import { Chip } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +45,18 @@ const ExpensesScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [editDeleteModalVisible, setEditDeleteModalVisible] = useState(false);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [budgetPeriod, setBudgetPeriod] = useState('monthly');
+  const [budgetAmount, setBudgetAmount] = useState({ daily: '', weekly: '', monthly: '' });
+  const [selectedCategoryExpenses, setSelectedCategoryExpenses] = useState(null);
+  const [expenseSort, setExpenseSort] = useState('weekly');
+  const [showExpenseList, setShowExpenseList] = useState(false);
+  const [activeDashboardPeriod, setActiveDashboardPeriod] = useState('monthly');
+  const [modalAnimation] = useState(new Animated.Value(0));
+  const [unorganizedExpenses, setUnorganizedExpenses] = useState([
+    { id: '1', amount: 30, description: 'Miscellaneous purchase', date: new Date() },
+    { id: '2', amount: 45, description: 'Unknown expense', date: new Date(Date.now() - 86400000) },
+  ]);
 
   const budget = 1000;
   const totalExpenses = categories.reduce((sum, cat) => sum + cat.amount, 0);
@@ -48,12 +65,48 @@ const ExpensesScreen = () => {
     year: 'numeric',
   });
 
+  const [expenses, setExpenses] = useState([
+    { id: '1', category: 'Food', amount: 30, description: 'Lunch', date: new Date() },
+    { id: '2', category: 'Food', amount: 45, description: 'Dinner', date: new Date(Date.now() - 86400000) },
+  ]);
+
+  const animateModalIn = () => {
+    Animated.spring(modalAnimation, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+  };
+
+  const animateModalOut = (onComplete) => {
+    Animated.timing(modalAnimation, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(onComplete);
+  };
+
+  const handleModalClose = (setModalVisible) => {
+    animateModalOut(() => setModalVisible(false));
+  };
+
+  const modalScale = modalAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.9, 1],
+  });
+
+  const modalOpacity = modalAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
   const handleAddCategory = () => {
     if (!newCategory.name || !newCategory.icon || !newCategory.color) {
       Alert.alert('Error', 'Please select a category.');
       return;
     }
-    const categoryExists = categories.some((cat) => cat.name === newCategory.name);
+    const categoryExists = categories.some(cat => cat.name === newCategory.name);
     if (categoryExists) {
       Alert.alert('Error', `${newCategory.name} is already added.`);
       return;
@@ -61,16 +114,16 @@ const ExpensesScreen = () => {
     setCategories((prev) => [
       ...prev,
       {
-        id: `${prev.length + 1}`,  // Ensuring unique IDs
+        id: `${prev.length + 1}`,
         name: newCategory.name,
         amount: 0,
-        total: 200, // Default total value
+        total: 200,
         color: newCategory.color,
         icon: newCategory.icon,
       },
     ]);
     setNewCategory({ name: '', icon: '', color: '' });
-    setIsModalVisible(false);
+    handleModalClose(setIsModalVisible);
   };
 
   const handleLongPress = (category) => {
@@ -104,13 +157,326 @@ const ExpensesScreen = () => {
     } else if (selectedPeriod === 'Daily') {
       return today.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
     } else if (selectedPeriod === 'Weekly') {
-      const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 1)); // Monday
+      const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 1));
       const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
       return `${startOfWeek.toLocaleDateString()} - ${endOfWeek.toLocaleDateString()}`;
     }
     return '';
   };
+
+  const handleCategoryPress = (category) => {
+    const categoryExpenses = expenses.filter(exp => exp.category === category.name);
+    setSelectedCategoryExpenses({
+      ...category,
+      expenses: sortExpenses(categoryExpenses, expenseSort)
+    });
+    setShowExpenseList(true);
+  };
+
+  const sortExpenses = (expenseList, sortType) => {
+    switch(sortType) {
+      case 'weekly':
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        return expenseList.filter(exp => exp.date >= weekStart);
+      case 'monthly':
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        return expenseList.filter(exp => exp.date >= monthStart);
+      case 'highToLow':
+        return [...expenseList].sort((a, b) => b.amount - a.amount);
+      case 'lowToHigh':
+        return [...expenseList].sort((a, b) => a.amount - b.amount);
+      default:
+        return expenseList;
+    }
+  };
+
+  const handleBudgetSave = () => {
+    handleModalClose(setShowBudgetModal);
+  };
+
+  const ExpenseListModal = () => (
+    <Modal
+      visible={showExpenseList}
+      transparent
+      animationType="none"
+      onShow={animateModalIn}
+    >
+      <View style={styles.modalOverlay}>
+        <Animated.View
+          style={[
+            styles.centeredModalContent,
+            {
+              opacity: modalOpacity,
+              transform: [{ scale: modalScale }],
+            },
+          ]}
+        >
+          <Text style={styles.modalTitle}>
+            {selectedCategoryExpenses?.name} Expenses
+          </Text>
+
+          <FlatList
+            data={selectedCategoryExpenses?.expenses}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.expenseItem}>
+                <View>
+                  <Text style={styles.expenseDescription}>{item.description}</Text>
+                  <Text style={styles.expenseDate}>
+                    {item.date.toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text style={styles.expenseAmount}>${item.amount}</Text>
+              </TouchableOpacity>
+            )}
+            style={styles.expensesList}
+          />
+
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => handleModalClose(setShowExpenseList)}
+          >
+            <Text style={styles.closeButtonText}>Close</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+
+  const BudgetModal = () => {
+    const renderTabContent = () => (
+      <View style={styles.allTabsContainer}>
+        <View style={[
+          styles.tabPanel,
+          { display: budgetPeriod === 'daily' ? 'flex' : 'none' }
+        ]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your daily budget"
+            placeholderTextColor="#1E3A8A"
+            value={budgetAmount.daily}
+            onChangeText={(text) => setBudgetAmount({ ...budgetAmount, daily: text })}
+            keyboardType="numeric"
+          />
+          <View style={styles.toggleContainer}>
+            <Text style={styles.label}>Display on Dashboard</Text>
+            <Switch
+              value={activeDashboardPeriod === budgetPeriod}
+              onValueChange={(value) => {
+                if (value) setActiveDashboardPeriod(budgetPeriod);
+              }}
+              trackColor={{ false: "#767577", true: "#0D9488" }}
+            />
+          </View>
+        </View>
+
+        <View style={[
+          styles.tabPanel,
+          { display: budgetPeriod === 'weekly' ? 'flex' : 'none' }
+        ]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your weekly budget"
+            placeholderTextColor="#1E3A8A"
+            value={budgetAmount.weekly}
+            onChangeText={(text) => setBudgetAmount({ ...budgetAmount, weekly: text })}
+            keyboardType="numeric"
+          />
+          <View style={styles.toggleContainer}>
+            <Text style={styles.label}>Display on Dashboard</Text>
+            <Switch
+              value={activeDashboardPeriod === budgetPeriod}
+              onValueChange={(value) => {
+                if (value) setActiveDashboardPeriod(budgetPeriod);
+              }}
+              trackColor={{ false: "#767577", true: "#0D9488" }}
+            />
+          </View>
+        </View>
+
+        <View style={[
+          styles.tabPanel,
+          { display: budgetPeriod === 'monthly' ? 'flex' : 'none' }
+        ]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your monthly budget"
+            placeholderTextColor="#1E3A8A"
+            value={budgetAmount.monthly}
+            onChangeText={(text) => setBudgetAmount({ ...budgetAmount, monthly: text })}
+            keyboardType="numeric"
+          />
+          <View style={styles.toggleContainer}>
+            <Text style={styles.label}>Display on Dashboard</Text>
+            <Switch
+              value={activeDashboardPeriod === budgetPeriod}
+              onValueChange={(value) => {
+                if (value) setActiveDashboardPeriod(budgetPeriod);
+              }}
+              trackColor={{ false: "#767577", true: "#0D9488" }}
+            />
+          </View>
+        </View>
+      </View>
+    );
+
+    return (
+      <Modal
+        visible={showBudgetModal}
+        transparent
+        animationType="none"
+        onShow={animateModalIn}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <Animated.View
+            style={[
+              styles.centeredModalContent,
+              {
+                opacity: modalOpacity,
+                transform: [{ scale: modalScale }],
+              },
+            ]}
+          >
+            <Text style={styles.modalTitle}>Set Budget</Text>
+            
+            <View style={styles.tabsContainer}>
+              {['daily', 'weekly', 'monthly'].map((period) => (
+                <TouchableOpacity
+                  key={period}
+                  onPress={() => setBudgetPeriod(period)}
+                  style={[styles.tab, budgetPeriod === period && styles.activeTab]}
+                >
+                  <Text style={[styles.tabText, budgetPeriod === period && styles.activeTabText]}>
+                    {period.charAt(0).toUpperCase() + period.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {renderTabContent()}
+
+            <View style={styles.modalButtonsContainer}>
+              <TouchableOpacity style={styles.modalButton} onPress={handleBudgetSave}>
+                <Text style={styles.modalButtonText}>Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => handleModalClose(setShowBudgetModal)}
+              >
+                <Text style={styles.closeButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
+  };
+
+  const AddCategoryModal = () => (
+    <Modal
+      visible={isModalVisible}
+      transparent
+      animationType="none"
+      onShow={animateModalIn}
+    >
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalOverlay}
+      >
+        <Animated.View
+          style={[
+            styles.centeredModalContent,
+            {
+              opacity: modalOpacity,
+              transform: [{ scale: modalScale }],
+            },
+          ]}
+        >
+          <Text style={styles.modalTitle}>Add New Category</Text>
+          <ScrollView
+            style={styles.categoryList}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {categoryList.map((category) => {
+              const isCategoryAdded = categories.some(cat => cat.name === category.name);
+              return (
+                <TouchableOpacity
+                  key={category.name}
+                  style={[
+                    styles.categoryOption,
+                    isCategoryAdded
+                      ? styles.categoryOptionDisabled
+                      : newCategory.name === category.name && styles.categoryOptionSelected,
+                  ]}
+                  onPress={() => {
+                    if (!isCategoryAdded) {
+                      setNewCategory(category);
+                    }
+                  }}
+                >
+                  <Ionicons name={category.icon} size={24} color={category.color} />
+                  <Text style={styles.categoryOptionText}>{category.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.modalButtonsContainer}>
+            <TouchableOpacity style={styles.modalButton} onPress={handleAddCategory}>
+              <Text style={styles.modalButtonText}>Add Category</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => handleModalClose(setIsModalVisible)}
+            >
+              <Text style={styles.closeButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  const EditDeleteModal = () => (
+    <Modal
+      visible={editDeleteModalVisible}
+      transparent
+      animationType="none"
+      onShow={animateModalIn}
+    >
+      <View style={styles.modalOverlay}>
+        <Animated.View
+          style={[
+            styles.centeredModalContent,
+            {
+              opacity: modalOpacity,
+              transform: [{ scale: modalScale }],
+            },
+          ]}
+        >
+          <Text style={styles.modalTitle}>Edit or Delete Category</Text>
+          <TouchableOpacity style={styles.modalButton} onPress={handleEditCategory}>
+            <Text style={styles.modalButtonText}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modalButton} onPress={handleDeleteCategory}>
+            <Text style={styles.modalButtonText}>Delete</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.modalButton}
+            onPress={() => handleModalClose(setEditDeleteModalVisible)}
+          >
+            <Text style={styles.modalButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
 
   return (
     <ScrollView
@@ -123,11 +489,11 @@ const ExpensesScreen = () => {
           <Text style={styles.headerTitle}>Expenses</Text>
           <Text style={styles.headerDate}>{currentDate}</Text>
         </View>
-        <TouchableOpacity>
-          <Image
-            source={{ uri: 'https://via.placeholder.com/40' }}
-            style={styles.profileImage}
-          />
+        <TouchableOpacity 
+          style={styles.setBudgetButton} 
+          onPress={() => setShowBudgetModal(true)}
+        >
+          <Text style={styles.setBudgetButtonText}>Set Budget</Text>
         </TouchableOpacity>
       </View>
 
@@ -173,9 +539,10 @@ const ExpensesScreen = () => {
       <Text style={styles.sectionTitle}>Categories</Text>
       {categories.map((category) => (
         <TouchableOpacity
-          key={category.id}  // Ensure unique key per category
+          key={category.id}
           style={styles.categoryCard}
           onLongPress={() => handleLongPress(category)}
+          onPress={() => handleCategoryPress(category)}
         >
           <View style={styles.categoryHeader}>
             <View style={styles.categoryIcon}>
@@ -215,66 +582,23 @@ const ExpensesScreen = () => {
         <Text style={styles.addButtonText}>Add Category</Text>
       </TouchableOpacity>
 
-      <Modal visible={isModalVisible} transparent={true} animationType="slide">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add New Category</Text>
-            {categoryList.map((category) => {
-              const isCategoryAdded = categories.some(cat => cat.name === category.name);
-              return (
-                <TouchableOpacity
-                  key={category.name}
-                  style={[
-                    styles.categoryOption,
-                    isCategoryAdded
-                      ? styles.categoryOptionDisabled
-                      : newCategory.name === category.name && styles.categoryOptionSelected,
-                  ]}
-                  onPress={() => {
-                    if (!isCategoryAdded) {
-                      setNewCategory(category);
-                    }
-                  }}
-                >
-                  <Ionicons name={category.icon} size={24} color={category.color} />
-                  <Text style={styles.categoryOptionText}>{category.name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity style={styles.modalButton} onPress={handleAddCategory}>
-              <Text style={styles.modalButtonText}>Add Category</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setIsModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Cancel</Text>
-            </TouchableOpacity>
+      <Text style={styles.sectionTitle}>Unorganized Expenses</Text>
+      {unorganizedExpenses.map((expense) => (
+        <View key={expense.id} style={styles.unorganizedExpenseCard}>
+          <View>
+            <Text style={styles.expenseDescription}>{expense.description}</Text>
+            <Text style={styles.expenseDate}>
+              {expense.date.toLocaleDateString()}
+            </Text>
           </View>
+          <Text style={styles.expenseAmount}>${expense.amount}</Text>
         </View>
-      </Modal>
+      ))}
 
-      {editDeleteModalVisible && (
-        <Modal visible={editDeleteModalVisible} transparent={true} animationType="fade">
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Edit or Delete Category</Text>
-              <TouchableOpacity style={styles.modalButton} onPress={handleEditCategory}>
-                <Text style={styles.modalButtonText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButton} onPress={handleDeleteCategory}>
-                <Text style={styles.modalButtonText}>Delete</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={() => setEditDeleteModalVisible(false)}
-              >
-                <Text style={styles.modalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <AddCategoryModal />
+      <BudgetModal />
+      <ExpenseListModal />
+      <EditDeleteModal />
     </ScrollView>
   );
 };
@@ -299,11 +623,6 @@ const styles = StyleSheet.create({
   headerDate: {
     fontSize: 16,
     color: '#64748B',
-  },
-  profileImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
   },
   summaryCard: {
     flexDirection: 'row',
@@ -348,7 +667,6 @@ const styles = StyleSheet.create({
   selectedChip: {
     marginHorizontal: 8,
     backgroundColor: '#0D9488',
-    color: '#FFFFFF',
   },
   selectedPeriodText: {
     textAlign: 'center',
@@ -363,6 +681,7 @@ const styles = StyleSheet.create({
     color: '#1E3A8A',
     paddingHorizontal: 16,
     marginBottom: 8,
+    marginTop: 16,
   },
   categoryCard: {
     backgroundColor: '#FFFFFF',
@@ -416,6 +735,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginHorizontal: 16,
     marginTop: 16,
+    marginBottom: 24,
   },
   addButtonText: {
     marginLeft: 8,
@@ -425,15 +745,15 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end', // Changed from 'center'
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    width: '90%',
+    width: '100%', // Changed from '95%'
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    padding: 20,
     alignItems: 'center',
   },
   modalTitle: {
@@ -441,6 +761,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1E3A8A',
     marginBottom: 16,
+  },
+  budgetInputContainer: {
+    width: '100%',
+    marginTop: 16,
+  },
+  budgetInputLabel: {
+    fontSize: 16,
+    color: '#1E3A8A',
+    marginBottom: 8,
+  },
+  budgetInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
   },
   categoryOption: {
     flexDirection: 'row',
@@ -467,18 +804,188 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     marginTop: 16,
+    width: '100%',
   },
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
-  modalCancelButton: {
-    marginTop: 8,
+  setBudgetButton: {
+    backgroundColor: '#0D9488',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
   },
-  modalCancelText: {
+  setBudgetButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  tab: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#0D9488',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#64748B',
+  },
+  activeTabText: {
+    color: '#0D9488',
+    fontWeight: 'bold',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,  // Reduced from 16
+    marginBottom: 4, // Reduced from 16
+  },
+  label: {
+    fontSize: 16,
+    color: '#1E3A8A',
+  },
+  unorganizedExpenseCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  expenseItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  expenseDescription: {
+    fontSize: 16,
+    color: '#1E3A8A',
+    fontWeight: '500',
+  },
+  expenseDate: {
     fontSize: 14,
     color: '#64748B',
+  },
+  expenseAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0D9488',
+  },
+  closeButton: {
+    marginTop: 16,
+    backgroundColor: '#0D9488',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignSelf: 'center',
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  sortChip: {
+    marginRight: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  centeredModalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    transform: [{ translateY: 0 }], // Add this to prevent flickering
+  },
+  allTabsContainer: {
+    width: '100%',
+    minHeight: 150, // Reduced from 200
+    position: 'relative',
+  },
+  tabPanel: {
+    width: '100%',
+    position: 'relative',  // Changed from absolute to relative
+    top: 0,
+    left: 0,
+  },
+  input: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 16,
+    color: '#374151',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 16,
+  },
+  modalButton: {
+    backgroundColor: '#0D9488',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 16,
+  },
+  modalButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  closeButton: {
+    backgroundColor: '#F3F4F6',
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  closeButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
 

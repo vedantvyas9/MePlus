@@ -1,0 +1,15 @@
+### iOS Configuration
+
+1. Create/modify `/Users/vedantvyas/meplus/ios/meplus/Info.plist`:
+
+<!-- Add these inside the <dict> tag -->
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <!-- Replace with your reversed client ID from GoogleService-Info.plist -->
+      <string>com.googleusercontent.apps.YOUR-CLIENT-ID</string>
+    </array>
+  </dict>
+</array>

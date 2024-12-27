@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CircularProgress from 'react-native-circular-progress-indicator';
 
-const DashboardScreen = () => {
+const DashboardScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
 
   const userName = 'Vedant'; // Replace with dynamic user name if available
@@ -73,18 +73,15 @@ const DashboardScreen = () => {
         <Text style={styles.cardSubtitle}>Weekly Goal</Text>
         <TouchableOpacity
           style={styles.toggleButton}
-          onPress={() => {
-            // Navigate to ExpensesScreen.js
-            console.log('Navigating to Expenses Screen');
-          }}
+          onPress={() => navigation.navigate('Expenses')}
         >
           <Text style={styles.toggleButtonText}>View More</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Today's Tasks Module */}
+      {/* Today's Tasks & Events Module */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Today's Tasks</Text>
+        <Text style={styles.cardTitle}>Today's Tasks & Events</Text>
         {tasks.map((task) => (
           <View key={task.id} style={styles.taskItem}>
             <TouchableOpacity style={styles.checkbox}>
@@ -96,9 +93,11 @@ const DashboardScreen = () => {
             </View>
           </View>
         ))}
-        <TouchableOpacity style={styles.addTaskButton}>
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-          <Text style={styles.addTaskText}>Add Task</Text>
+        <TouchableOpacity
+          style={styles.toggleButton}
+          onPress={() => navigation.navigate('Calendar')}
+        >
+          <Text style={styles.toggleButtonText}>View More</Text>
         </TouchableOpacity>
       </View>
 
@@ -210,19 +209,6 @@ const styles = StyleSheet.create({
   taskSkill: {
     fontSize: 12,
     color: '#9CA3AF',
-  },
-  addTaskButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F59E0B',
-    padding: 12,
-    borderRadius: 20,
-    marginTop: 16,
-  },
-  addTaskText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    marginLeft: 8,
   },
   sectionTitle: {
     fontSize: 16,
